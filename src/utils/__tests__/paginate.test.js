@@ -29,6 +29,55 @@ describe("paginate", () => {
     expect(result.meta.nextCursor).toBe("2");
     expect(result.data).toHaveLength(2);
   });
+
+  test("maintains stable ordering and no duplicates under concurrent writes (regression #87)", async () => {
+    // 1. Initial data state (ordered DESC by id)
+    const initialData = [
+      { id: 3 },
+      { id: 2 },
+      { id: 1 }
+    ];
+    
+    let dbState = [...initialData];
+    
+    // Mock model that respects limit and cursor
+    const mockModel = {
+      name: "TestModel",
+      findMany: jest.fn().mockImplementation(async (query) => {
+        let items = [...dbState];
+        items.sort((a, b) => b.id - a.id);
+        
+        if (query.cursor && query.cursor.id) {
+          items = items.filter(item => item.id < query.cursor.id);
+        }
+        
+        return items.slice(0, query.take);
+      })
+    };
+
+    // 2. Fetch first page (limit 2)
+    const page1 = await paginate(mockModel, { limit: 2 });
+    
+    expect(page1.data).toHaveLength(2);
+    expect(page1.data[0].id).toBe(3);
+    expect(page1.data[1].id).toBe(2);
+    expect(page1.meta.hasMore).toBe(true);
+    expect(page1.meta.nextCursor).toBe("2");
+
+    // 3. Simulate concurrent write: a new record is added before the next fetch
+    dbState.push({ id: 4 });
+    
+    // 4. Fetch second page using the cursor from page 1
+    const page2 = await paginate(mockModel, { 
+      limit: 2,
+      cursor: parseInt(page1.meta.nextCursor, 10) 
+    });
+    
+    // ID 4 is skipped (it's > cursor 2). We don't get duplicates of 2. We only get 1.
+    expect(page2.data).toHaveLength(1);
+    expect(page2.data[0].id).toBe(1);
+    expect(page2.meta.hasMore).toBe(false);
+  });
 });
 
 describe("paginateOffset", () => {
