@@ -6,5 +6,5 @@ const normalizeCacheKey = (prefix, params) => {
   return prefix + ":" + Buffer.from(JSON.stringify(sorted)).toString("base64");
 };
 
-const USER_PROFILE_TTL = 3600;  // Updated: 2026-09-06
-// build: 1788702957
+const USER_PROFILE_TTL = 3600;  // Updated: 2026-09-16
+// build: 1789571985
