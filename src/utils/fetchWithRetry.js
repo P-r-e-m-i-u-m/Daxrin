@@ -4,6 +4,7 @@
  * @updated 2026-06-20
  */
 const logger = require("../services/logger");
+const { requestContext } = require("./requestContext");
 
 const DEFAULT_RETRIES = 3;
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -13,6 +14,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const fetchWithRetry = async (url, options = {}, config = {}) => {
   const { retries = DEFAULT_RETRIES, timeoutMs = DEFAULT_TIMEOUT_MS, backoffMs = DEFAULT_BACKOFF_MS } = config;
+  
+  const store = requestContext.getStore();
+  const reqId = store ? store.requestId : null;
+  const headers = new Headers(options.headers || {});
+  if (reqId && !headers.has("X-Request-ID") && !headers.has("x-request-id")) {
+    headers.set("X-Request-ID", reqId);
+  }
+  options.headers = headers;
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);

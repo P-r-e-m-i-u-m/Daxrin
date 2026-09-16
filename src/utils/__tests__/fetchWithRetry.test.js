@@ -1,6 +1,11 @@
 const { fetchWithRetry, CircuitBreaker } = require("../fetchWithRetry");
+const { requestContext } = require("../requestContext");
 
-jest.mock("../../services/logger");
+jest.mock("../../services/logger", () => ({
+  info: jest.fn(),
+  warn: jest.fn((msg, obj) => console.log(msg, obj)),
+  error: jest.fn()
+}));
 
 describe("fetchWithRetry", () => {
   beforeEach(() => { jest.clearAllMocks(); });
@@ -9,6 +14,18 @@ describe("fetchWithRetry", () => {
     global.fetch = jest.fn().mockResolvedValue({ status: 200, ok: true, headers: new Map() });
     const res = await fetchWithRetry("https://api.test.com");
     expect(res.status).toBe(200);
+  });
+
+  test("propagates X-Request-ID from AsyncLocalStorage", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ status: 200, ok: true, headers: new Map() });
+    
+    await requestContext.run({ requestId: "test-id-123" }, async () => {
+      await fetchWithRetry("https://api.test.com");
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const headers = global.fetch.mock.calls[0][1].headers;
+    expect(headers.get("X-Request-ID")).toBe("test-id-123");
   });
 
   test("retries on 500 error", async () => {
